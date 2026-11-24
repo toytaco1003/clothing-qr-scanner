@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Clothing QR Camera Scanner</title>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <style>
+    *{box-sizing:border-box}body{font-family:Arial,sans-serif;max-width:650px;margin:0 auto;padding:16px;background:#f4f7f4;color:#1d2922}
+    .card{background:#fff;border:1px solid #d8e2da;border-radius:14px;padding:16px;margin:12px 0}
+    input,button{width:100%;font:inherit;padding:13px;border-radius:9px;margin-top:8px}
+    input{border:1px solid #bdcbbf}button{border:0;background:#28543c;color:#fff;font-weight:bold}
+    button.secondary{background:#e5eee8;color:#234331}#reader{width:100%;margin-top:12px}
+    #msg{padding:10px;margin-top:10px;border-radius:8px;display:none}#msg.ok{display:block;background:#e2f3e7;color:#205432}#msg.err{display:block;background:#fbe8e8;color:#852828}
+    small{color:#66756b;line-height:1.4;display:block;margin-top:8px}
+  </style>
+</head>
+<body>
+  <h1>Clothing QR Camera Scanner</h1>
+  <section class="card">
+    <label for="appUrl"><b>Your inventory web-app address</b></label>
+    <input id="appUrl" type="url" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="url">
+    <small>Enter the Google Apps Script address that ends in /exec. It is saved in this browser so you only need to enter it once.</small>
+    <button id="save">Save inventory address</button>
+    <div id="reader"></div>
+    <button id="start">Start camera</button>
+    <button id="stop" class="secondary">Stop camera</button>
+    <div id="msg"></div>
+  </section>
+  <script>
+    const $=id=>document.getElementById(id);
+    let scanner=null;
+    const saved=localStorage.getItem('inventoryWebAppUrl')||'';
+    $('appUrl').value=saved;
+    const message=(t,type='ok')=>{$('msg').textContent=t;$('msg').className=type;};
+    function validUrl(){
+      const value=$('appUrl').value.trim();
+      if(!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec(?:\?.*)?$/.test(value)){
+        message('Please enter your Google Apps Script web-app address ending in /exec.','err');return null;
+      }
+      localStorage.setItem('inventoryWebAppUrl',value.split('?')[0]);return value.split('?')[0];
+    }
+    $('save').onclick=()=>{if(validUrl())message('Inventory address saved. You can start scanning.');};
+    $('start').onclick=async()=>{
+      const app=validUrl();if(!app)return;
+      try{
+        if(!window.Html5Qrcode){message('The camera scanner library did not load. Check your internet connection.','err');return;}
+        if(!scanner)scanner=new Html5Qrcode('reader');
+        await scanner.start({facingMode:'environment'},{fps:10,qrbox:{width:240,height:240}},decoded=>{
+          const code=String(decoded||'').trim().toUpperCase();
+          if(!/^ITEM-\d{4}$/.test(code)&&!/^BIN-\d{3}$/.test(code)){message('That QR code is not an inventory item or bin code.','err');return;}
+          scanner.stop().catch(()=>{});
+          message('Scanned '+code+'. Returning to your inventory...');
+          const scannerUrl=location.href.split('#')[0];
+          const target=new URL(app);
+          target.searchParams.set(code.startsWith('ITEM-')?'sku':'bin',code);
+          target.searchParams.set('scanner',scannerUrl);
+          location.href=target.toString();
+        });
+        message('Camera is on. Point it at an item or bin QR label.');
+      }catch(e){message((e&&e.message?e.message:String(e))+' — If Chrome asks for camera access, choose Allow.','err');}
+    };
+    $('stop').onclick=async()=>{if(scanner&&scanner.isScanning){await scanner.stop();message('Camera stopped.');}};
+  </script>
+</body>
+</html>
